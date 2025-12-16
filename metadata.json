@@ -1,0 +1,5 @@
+{
+  "name": "AltoGen Studio",
+  "description": "A comprehensive Cordova project configurator and simulator. Generate config.xml files, preview web assets in a mobile shell, and analyze project requirements using Gemini AI.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,242 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="https://cordova.apache.org/static/img/cordova_bot.png" />
+    <!-- Disable zoom -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>AltoGen Studio</title>
+    <!-- We keep Tailwind CDN for simplicity to avoid complex PostCSS setup for this specific demo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #0f172a;
+        color: #e2e8f0;
+        overflow: hidden; /* Prevent body scroll if container handles it, but ensures no double scrollbars */
+      }
+      .font-mono {
+        font-family: 'Fira Code', monospace;
+      }
+      
+      /* Hide scrollbar for Chrome, Safari and Opera */
+      ::-webkit-scrollbar {
+        display: none;
+      }
+      
+      /* Hide scrollbar for IE, Edge and Firefox */
+      * {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
+      }
+
+      .perspective-1000 {
+        perspective: 1000px;
+      }
+
+      /* SPLASH SCREEN STYLES */
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: radial-gradient(circle at center, #1e293b 0%, #020617 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.6s ease-out, visibility 0.6s;
+      }
+
+      /* 3D CUBE LOADER */
+      .cube-loader {
+        position: relative;
+        width: 80px;
+        height: 80px;
+        transform-style: preserve-3d;
+        animation: cubeSpin 4s infinite linear;
+        margin-bottom: 3rem;
+      }
+      .cube-face {
+        position: absolute;
+        width: 80px;
+        height: 80px;
+        background: rgba(6, 182, 212, 0.1);
+        border: 2px solid rgba(6, 182, 212, 0.6);
+        box-shadow: 0 0 20px rgba(6, 182, 212, 0.2);
+      }
+      .front  { transform: rotateY(0deg) translateZ(40px); }
+      .back   { transform: rotateY(180deg) translateZ(40px); }
+      .right  { transform: rotateY(90deg) translateZ(40px); }
+      .left   { transform: rotateY(-90deg) translateZ(40px); }
+      .top    { transform: rotateX(90deg) translateZ(40px); }
+      .bottom { transform: rotateX(-90deg) translateZ(40px); }
+
+      /* Inner glowing core */
+      .cube-core {
+        position: absolute;
+        top: 20px; left: 20px;
+        width: 40px; height: 40px;
+        background: #06b6d4;
+        box-shadow: 0 0 40px #06b6d4;
+        transform: translateZ(0);
+        animation: corePulse 2s infinite ease-in-out;
+      }
+
+      @keyframes cubeSpin {
+        0% { transform: rotateX(-30deg) rotateY(0deg); }
+        100% { transform: rotateX(-30deg) rotateY(360deg); }
+      }
+      @keyframes corePulse {
+        0%, 100% { transform: scale(0.8); opacity: 0.8; }
+        50% { transform: scale(1.1); opacity: 1; }
+      }
+
+      /* TEXT & PROGRESS */
+      .splash-title {
+        font-size: 2rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        color: #fff;
+        text-transform: uppercase;
+        margin-bottom: 2rem;
+        text-shadow: 0 0 20px rgba(6, 182, 212, 0.5);
+        transform: perspective(500px) translateZ(20px);
+      }
+      
+      .progress-container {
+        width: 300px;
+        height: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 999px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+        border: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .progress-bar {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #06b6d4, #3b82f6);
+        border-radius: 999px;
+        box-shadow: 0 0 15px rgba(6, 182, 212, 0.8);
+        transition: width 0.3s ease-out;
+        position: relative;
+      }
+      
+      /* Shiny effect on bar */
+      .progress-bar::after {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; bottom: 0; right: 0;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+        transform: translateX(-100%);
+        animation: shimmer 1.5s infinite;
+      }
+
+      @keyframes shimmer {
+        100% { transform: translateX(100%); }
+      }
+
+      .loading-text {
+        margin-top: 1rem;
+        font-family: 'Fira Code', monospace;
+        color: #94a3b8;
+        font-size: 0.875rem;
+      }
+      
+      .percentage {
+        color: #22d3ee;
+        font-weight: bold;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide": "https://esm.sh/lucide@^0.561.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
+    "jszip": "https://esm.sh/jszip@^3.10.1",
+    "firebase/": "https://esm.sh/firebase@^12.7.0/",
+    "vite": "https://esm.sh/vite@^7.3.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <!-- SPLASH SCREEN START -->
+    <div id="app-splash">
+      <div class="cube-loader">
+        <div class="cube-face front"></div>
+        <div class="cube-face back"></div>
+        <div class="cube-face right"></div>
+        <div class="cube-face left"></div>
+        <div class="cube-face top"></div>
+        <div class="cube-face bottom"></div>
+        <div class="cube-core"></div>
+      </div>
+      
+      <div class="splash-title">AltoGen<span style="color:#06b6d4">Studio</span></div>
+      
+      <div class="progress-container">
+        <div id="splash-bar" class="progress-bar"></div>
+      </div>
+      
+      <div class="loading-text">
+        INITIALIZING SYSTEM <span id="splash-percent" class="percentage">0%</span>
+      </div>
+    </div>
+    <!-- SPLASH SCREEN END -->
+
+    <div id="root" class="h-screen w-full"></div>
+    
+    <script>
+      // Global Splash Control
+      window.dismissSplash = function() {
+          const splash = document.getElementById('app-splash');
+          const bar = document.getElementById('splash-bar');
+          const percentText = document.getElementById('splash-percent');
+          
+          if(bar) bar.style.width = '100%';
+          if(percentText) percentText.innerText = '100%';
+
+          if (splash) {
+              setTimeout(() => {
+                  splash.style.opacity = '0';
+                  splash.style.visibility = 'hidden';
+                  setTimeout(() => splash.remove(), 600);
+              }, 500); // Short delay to show 100%
+          }
+      };
+
+      // Fallback: If app doesn't load in 8 seconds, dismiss anyway (in case of error)
+      setTimeout(() => {
+          if (document.getElementById('app-splash')) {
+              window.dismissSplash();
+          }
+      }, 8000);
+
+      // Simulated Progress until App Takes Over
+      (function() {
+        let current = 0;
+        const bar = document.getElementById('splash-bar');
+        const percentText = document.getElementById('splash-percent');
+        
+        const interval = setInterval(() => {
+            if (current < 90) {
+                current += Math.random() * 5; // Random increments
+                if (current > 90) current = 90;
+                
+                if (bar) bar.style.width = current + '%';
+                if (percentText) percentText.innerText = Math.floor(current) + '%';
+            } else {
+                clearInterval(interval);
+            }
+        }, 100);
+      })();
+    </script>
+    
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
