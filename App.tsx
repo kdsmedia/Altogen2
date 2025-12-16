@@ -1,2 +1,1 @@
-// This file is deprecated. All logic moved to index.tsx for vanilla implementation.
-export default {};
+// This file is deprecated. See index.tsx.
