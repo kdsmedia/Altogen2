@@ -1,9 +1,9 @@
-
 import { state, fileActions, updateState, updateConfig, showToast } from '../index';
 import { applyAutoFix } from '../services/validationService';
 import { generateCodeSuggestion } from '../services/geminiService';
 import { highlightCode, analyzeCode, applyLintFix } from '../services/syntaxService';
 import { createIcons, icons } from 'lucide';
+import { ViewMode, FileEntry } from '../types';
 
 interface TreeNode {
   name: string;
@@ -11,8 +11,8 @@ interface TreeNode {
   type: 'file' | 'folder';
   children?: { [key: string]: TreeNode };
   meta?: string;
-  isVirtual?: boolean; // System files
-  isEditable?: boolean; // User files
+  isVirtual?: boolean; 
+  isEditable?: boolean; 
   hasError?: boolean;
 }
 
@@ -33,10 +33,8 @@ export const ProjectStructure = () => {
     const currentPath = node.path ? `${node.path}/${current}` : current;
 
     if (pathParts.length === 1) {
-      // It's a file
       node.children[current] = { name: current, path: currentPath, type: 'file', meta, isVirtual, isEditable };
     } else {
-      // It's a folder
       if (!node.children[current]) {
         node.children[current] = { name: current, path: currentPath, type: 'folder', children: {}, isVirtual, isEditable };
       }
@@ -44,11 +42,9 @@ export const ProjectStructure = () => {
     }
   };
 
-  // --- SYSTEM FILES (Virtual - Sync from State) ---
   addToTree(['hooks', 'README.md'], root, 'System', true, false);
   addToTree(['platforms', '.gitkeep'], root, 'System', true, false);
   
-  // --- ASSETS (Virtual) ---
   if (state.assets.length > 0) {
       state.assets.forEach(asset => {
           const typeFolder = asset.assetType === 'splash' ? 'screen' : 'icon';
@@ -58,8 +54,6 @@ export const ProjectStructure = () => {
        addToTree(['res', 'icon', 'android', 'default.png'], root, 'Default', true, false);
   }
 
-  // --- USER FILES (Editable WWW & Virtual System Files) ---
-  // Ensure www exists in tree
   if (!root.children!['www']) {
       root.children!['www'] = { name: 'www', path: 'www', type: 'folder', children: {}, isVirtual: false, isEditable: true };
   }
@@ -74,12 +68,10 @@ export const ProjectStructure = () => {
       addToTree(parts, root, f.isFolder ? 'Folder' : `${(f.size / 1024).toFixed(1)} KB`, f.isVirtual, !f.isVirtual);
   });
   
-  // Handle Empty State
   if (state.files.length === 0 && state.config.sourceType === 'url') {
       addToTree(['www', 'index.html'], root, 'Wrapper', true, false);
   }
 
-  // 2. Recursive Render
   const renderNode = (node: TreeNode, depth: number = 0): string => {
      if (node.name === 'root') {
          return Object.keys(node.children || {}).sort().map(k => renderNode(node.children![k]!, depth)).join('');
@@ -87,22 +79,23 @@ export const ProjectStructure = () => {
 
      const isSystem = node.isVirtual;
      const isEditable = node.isEditable || (!isSystem && node.path.startsWith('www/'));
-     const isTextFile = node.type === 'file' && /\.(html|css|js|json|xml|txt|md|svg)$/i.test(node.name);
+     const isWWWRoot = node.path === 'www';
 
-     // Buttons are always visible (removed opacity-0) for better usability
      const actions = isEditable ? `
         <div class="flex items-center gap-1 ml-2">
-            ${isTextFile ? `
+            ${node.type === 'file' && /\.(html|css|js|json|xml|txt|md|svg)$/i.test(node.name) ? `
                 <button data-action="edit-content" data-path="${node.path}" class="p-1.5 hover:bg-slate-700 bg-slate-800/50 rounded text-cyan-400 border border-white/5" title="Edit Content">
                     <i data-lucide="file-edit" class="w-3 h-3"></i>
                 </button>
             ` : ''}
-            <button data-action="rename" data-path="${node.path}" data-type="${node.type}" class="p-1.5 hover:bg-slate-700 bg-slate-800/50 rounded text-blue-400 border border-white/5" title="Rename">
-                <i data-lucide="pencil" class="w-3 h-3"></i>
-            </button>
-            <button data-action="delete" data-path="${node.path}" class="p-1.5 hover:bg-red-900/50 bg-slate-800/50 rounded text-red-400 border border-white/5" title="Delete">
-                <i data-lucide="trash" class="w-3 h-3"></i>
-            </button>
+            ${!isWWWRoot ? `
+                <button data-action="rename" data-path="${node.path}" data-type="${node.type}" class="p-1.5 hover:bg-slate-700 bg-slate-800/50 rounded text-blue-400 border border-white/5" title="Rename">
+                    <i data-lucide="pencil" class="w-3 h-3"></i>
+                </button>
+                <button data-action="delete" data-path="${node.path}" class="p-1.5 hover:bg-red-900/50 bg-slate-800/50 rounded text-red-400 border border-white/5" title="Delete">
+                    <i data-lucide="trash" class="w-3 h-3"></i>
+                </button>
+            ` : ''}
         </div>
      ` : `<span class="text-[10px] text-slate-600 px-2 select-none">${isSystem ? 'System' : 'Locked'}</span>`;
 
@@ -115,12 +108,11 @@ export const ProjectStructure = () => {
         else if (node.name.endsWith('.xml') || node.name.endsWith('.json')) { icon = 'settings-2'; color = 'text-slate-300'; }
         else if (node.name.endsWith('.png') || node.name.endsWith('.jpg')) { icon = 'image'; color = 'text-purple-400'; }
 
-        // Added data-row-file and cursor-pointer for click-to-edit
         return `
             <div 
                 data-row-file="${node.path}"
-                data-editable="${isEditable && isTextFile}"
-                class="flex items-center justify-between group py-2 hover:bg-white/5 rounded px-2 transition-colors border-l-2 border-transparent ${isEditable && isTextFile ? 'hover:border-cyan-500 cursor-pointer' : 'cursor-default'}"
+                data-editable="${isEditable && node.type === 'file' && /\.(html|css|js|json|xml|txt|md|svg)$/i.test(node.name)}"
+                class="flex items-center justify-between group py-2 hover:bg-white/5 rounded px-2 transition-colors border-l-2 border-transparent ${isEditable ? 'hover:border-cyan-500 cursor-pointer' : 'cursor-default'}"
             >
                 <div class="flex items-center gap-2 overflow-hidden flex-1">
                     <i data-lucide="${icon}" class="w-4 h-4 ${color} shrink-0"></i>
@@ -133,7 +125,6 @@ export const ProjectStructure = () => {
             </div>
         `;
      } else {
-         // Folder
          const childrenKeys = Object.keys(node.children || {}).sort();
          const childrenHtml = childrenKeys.map(key => renderNode(node.children![key]!, depth + 1)).join('');
 
@@ -155,7 +146,6 @@ export const ProjectStructure = () => {
      }
   };
 
-  // Render Issues Panel
   const renderIssues = () => {
       if (state.issues.length === 0) return '';
       
@@ -175,22 +165,25 @@ export const ProjectStructure = () => {
                     </div>
                 </div>
                 ${errorCount > 0 || warningCount > 0 ? `
-                    <button id="btn-fix-all" class="px-4 py-2 bg-white text-slate-900 hover:bg-slate-200 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors shadow-lg shadow-white/10">
-                        <i data-lucide="sparkles" class="w-4 h-4 text-purple-600"></i>
-                        Auto-Fix Issues
+                    <button id="btn-fix-all" class="px-4 py-2 bg-white text-slate-900 hover:bg-slate-200 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors shadow-lg shadow-white/10 group">
+                        <i data-lucide="sparkles" class="w-4 h-4 text-purple-600 group-hover:rotate-12 transition-transform"></i>
+                        Auto-Fix All
                     </button>
                 ` : ''}
             </div>
-            <div class="p-2">
+            <div class="p-2 space-y-1">
                 ${state.issues.map(issue => `
-                    <div class="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 group transition-colors">
+                    <div class="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 group transition-colors">
                         <div class="flex items-center gap-3">
                             <i data-lucide="${issue.severity === 'error' ? 'x-circle' : 'info'}" class="w-4 h-4 ${issue.severity === 'error' ? 'text-red-400' : 'text-yellow-400'}"></i>
-                            <span class="text-sm text-slate-300">${issue.message}</span>
+                            <div class="flex flex-col">
+                                <span class="text-sm text-slate-300 font-medium">${issue.message}</span>
+                                <span class="text-[10px] text-slate-500 uppercase tracking-tighter">${issue.severity} type</span>
+                            </div>
                         </div>
                         ${issue.autoFixAvailable ? `
-                           <button data-fix-id="${issue.id}" class="text-xs text-cyan-400 hover:text-cyan-300 underline opacity-0 group-hover:opacity-100 transition-opacity">
-                               Fix this
+                           <button data-fix-id="${issue.id}" class="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-lg border border-cyan-500/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 font-bold">
+                               <i data-lucide="wrench" class="w-3 h-3"></i> Fix
                            </button>
                         ` : ''}
                     </div>
@@ -200,7 +193,6 @@ export const ProjectStructure = () => {
       `;
   };
   
-  // Render Editor Linting Panel
   const renderEditorIssues = () => {
       if (state.editorIssues.length === 0) return '';
       
@@ -226,14 +218,9 @@ export const ProjectStructure = () => {
                                 <span class="text-xs text-slate-300 truncate" title="${issue.message}">${issue.message}</span>
                             </div>
                             <div class="flex items-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
-                                <button data-manual-fix="${issue.line}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 border border-white/10">
-                                    Manual
+                                <button data-auto-fix="${issue.id}" class="px-2 py-1 rounded bg-${issue.severity === 'error' ? 'red' : 'blue'}-900/30 hover:bg-${issue.severity === 'error' ? 'red' : 'blue'}-900/50 text-[10px] ${color} border border-${issue.severity === 'error' ? 'red' : 'blue'}-500/20 flex items-center gap-1">
+                                    <i data-lucide="sparkles" class="w-3 h-3"></i> Auto Fix
                                 </button>
-                                ${issue.fixSuggestion ? `
-                                    <button data-auto-fix="${issue.id}" class="px-2 py-1 rounded bg-${issue.severity === 'error' ? 'red' : 'blue'}-900/30 hover:bg-${issue.severity === 'error' ? 'red' : 'blue'}-900/50 text-[10px] ${color} border border-${issue.severity === 'error' ? 'red' : 'blue'}-500/20 flex items-center gap-1">
-                                        <i data-lucide="sparkles" class="w-3 h-3"></i> Auto Fix
-                                    </button>
-                                ` : ''}
                             </div>
                         </div>
                      `;
@@ -246,11 +233,10 @@ export const ProjectStructure = () => {
   return `
     <div class="h-full flex flex-col space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto w-full relative">
       
-      <!-- TITLE & TOOLBAR -->
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 class="text-3xl font-bold text-white mb-1">Project Structure</h2>
-            <p class="text-slate-400 text-sm">Manage files in <span class="font-mono text-cyan-400">www/</span> directory.</p>
+            <h2 class="text-3xl font-bold text-white mb-1 tracking-tight">Project Structure</h2>
+            <p class="text-slate-400 text-sm">Review your assets and manage the <span class="font-mono text-cyan-400">www/</span> shell.</p>
           </div>
           
           <div class="flex flex-wrap items-center gap-2">
@@ -273,10 +259,8 @@ export const ProjectStructure = () => {
           </div>
       </div>
 
-      <!-- HEALTH MONITOR -->
       ${renderIssues()}
 
-      <!-- FILE TREE -->
       <div class="flex-1 bg-slate-950/50 backdrop-blur-sm rounded-2xl border border-white/5 shadow-inner overflow-hidden flex flex-col relative min-h-[400px]">
           <div class="bg-slate-900 px-4 py-3 border-b border-white/5 flex items-center gap-2 sticky top-0 z-10">
              <div class="flex gap-1.5">
@@ -284,13 +268,12 @@ export const ProjectStructure = () => {
                  <div class="w-3 h-3 rounded-full bg-yellow-500/20 border border-yellow-500/50"></div>
                  <div class="w-3 h-3 rounded-full bg-green-500/20 border border-green-500/50"></div>
              </div>
-             <span class="ml-4 text-xs font-mono text-slate-500">${state.config.id}</span>
+             <span class="ml-4 text-[10px] font-mono text-slate-500 uppercase tracking-widest">${state.config.id || 'not configured'}</span>
              
-             <!-- Auto Sync Indicator -->
              <div class="ml-auto flex items-center gap-2 text-xs font-mono">
                 <span class="flex items-center gap-1 text-green-400 bg-green-400/10 px-2 py-0.5 rounded">
                     <i data-lucide="refresh-cw" class="w-3 h-3 animate-[spin_3s_linear_infinite]"></i>
-                    Auto-Sync Active
+                    Live FS
                 </span>
              </div>
           </div>
@@ -300,95 +283,68 @@ export const ProjectStructure = () => {
           </div>
       </div>
       
-      <div class="flex justify-end">
-         <button data-nav="CONFIG" class="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-3 rounded-xl font-medium shadow-lg shadow-cyan-500/20 flex items-center gap-2 transition-all">
-             <span>Finalize Configuration</span>
-             <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      <div class="flex justify-end gap-3 pb-8">
+         <button data-nav="${ViewMode.SETUP}" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2">
+             <i data-lucide="chevron-left" class="w-4 h-4"></i>
+             <span>Back to Setup</span>
+         </button>
+         <button data-nav="${ViewMode.CONFIG}" class="bg-cyan-600 hover:bg-cyan-500 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-cyan-500/20 flex items-center gap-2 transition-all">
+             <span>Finalize Project</span>
+             <i data-lucide="chevron-right" class="w-4 h-4"></i>
          </button>
       </div>
 
-      <!-- EDITOR MODAL -->
       ${state.editingPath ? `
         <div class="absolute inset-0 z-50 bg-slate-950 flex flex-col animate-in fade-in zoom-in-95 duration-200 shadow-2xl rounded-2xl overflow-hidden">
             <div class="bg-slate-900 border-b border-white/10 px-4 py-3 flex items-center justify-between z-20">
                 <div class="flex items-center gap-2">
                     <i data-lucide="edit-3" class="w-4 h-4 text-cyan-400"></i>
                     <span class="font-mono text-sm text-slate-200">${state.editingPath}</span>
-                    <span class="text-xs text-slate-500 ml-2">(${state.editorContent.length} chars)</span>
-                    ${state.editorIssues.length > 0 ? `
-                        <div class="flex items-center gap-1 ml-2 px-2 py-0.5 bg-red-900/30 rounded border border-red-500/20">
-                            <i data-lucide="alert-circle" class="w-3 h-3 text-red-400"></i>
-                            <span class="text-xs text-red-400 font-bold">${state.editorIssues.length}</span>
-                        </div>
-                    ` : ''}
                 </div>
                 <div class="flex items-center gap-2">
-                     <div class="flex items-center gap-1 mr-3 border-r border-white/10 pr-3">
-                        <button id="editor-ai" class="p-1.5 text-purple-400 hover:text-white hover:bg-purple-500/20 rounded-lg transition-colors border border-purple-500/30 shadow-[0_0_10px_-3px_rgba(168,85,247,0.4)]" title="Auto-Suggest Feature (AI)">
-                            <i data-lucide="wand-2" class="w-4 h-4"></i>
-                        </button>
-                        <button id="editor-copy" class="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-white/5 rounded-lg transition-colors" title="Copy All">
-                            <i data-lucide="copy" class="w-4 h-4"></i>
-                        </button>
-                        <button id="editor-paste" class="p-1.5 text-slate-400 hover:text-green-400 hover:bg-white/5 rounded-lg transition-colors" title="Paste at Cursor">
-                            <i data-lucide="clipboard-paste" class="w-4 h-4"></i>
-                        </button>
-                    </div>
-
-                    <button id="editor-cancel" class="px-3 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors">Cancel</button>
-                    <button id="editor-save" class="px-3 py-1.5 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg shadow-lg shadow-cyan-500/20 flex items-center gap-1">
-                        <i data-lucide="save" class="w-3 h-3"></i> Save Changes
+                    <button id="editor-ai" class="p-1.5 text-purple-400 hover:text-white hover:bg-purple-500/20 rounded-lg transition-colors border border-purple-500/30" title="Suggest Code (AI)">
+                        <i data-lucide="wand-2" class="w-4 h-4"></i>
+                    </button>
+                    <button id="editor-save" class="flex items-center gap-2 px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-lg transition-all">
+                        <i data-lucide="save" class="w-3.5 h-3.5"></i> Save
+                    </button>
+                    <button id="editor-close" class="p-1.5 text-slate-500 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
+                        <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
             </div>
-            
-            <div class="flex-1 relative flex flex-col min-h-0 bg-[#0d1117]">
-                <!-- SYNTAX HIGHLIGHTING LAYER -->
-                <div class="absolute inset-0 p-4 font-mono text-sm overflow-hidden pointer-events-none z-0">
-                     <pre id="editor-highlight-layer" class="m-0 p-0 whitespace-pre-wrap break-all" style="font-family: 'Fira Code', monospace; line-height: 1.5; color: transparent;">${state.editorHighlightedContent}</pre>
+
+            <div class="flex-1 flex flex-col md:flex-row min-h-0">
+                <div class="flex-1 flex flex-col min-h-0 bg-[#0d1117] relative">
+                    <div class="flex-1 relative overflow-hidden">
+                        <div class="absolute left-0 top-0 bottom-0 w-12 bg-slate-900/50 border-r border-white/5 flex flex-col items-center pt-4 text-[10px] font-mono text-slate-600 select-none z-10">
+                            ${state.editorContent.split('\n').map((_, i) => `<div class="h-[21px] flex items-center">${i + 1}</div>`).join('')}
+                        </div>
+                        <div class="absolute inset-0 left-12 overflow-auto custom-scrollbar p-0">
+                             <pre id="editor-highlight" class="absolute inset-0 p-4 m-0 pointer-events-none font-mono text-sm leading-[21px] whitespace-pre-wrap break-all z-0">${state.editorHighlightedContent}</pre>
+                             <textarea id="editor-textarea" class="absolute inset-0 w-full h-full p-4 m-0 bg-transparent text-transparent caret-white font-mono text-sm leading-[21px] whitespace-pre-wrap break-all resize-none outline-none z-10" spellcheck="false">${state.editorContent}</textarea>
+                        </div>
+                    </div>
+                    ${renderEditorIssues()}
                 </div>
 
-                <!-- INPUT LAYER -->
-                <textarea id="file-editor-area" class="absolute inset-0 w-full h-full bg-transparent text-transparent caret-white font-mono text-sm p-4 resize-none outline-none leading-relaxed z-10 whitespace-pre-wrap break-all" spellcheck="false" style="line-height: 1.5; font-family: 'Fira Code', monospace;">${state.editorContent}</textarea>
-                
-                <!-- AI Suggestion Panel -->
-                ${state.isSuggesting ? `
-                    <div class="absolute bottom-0 inset-x-0 bg-slate-900/90 backdrop-blur-md p-4 border-t border-purple-500/30 flex items-center justify-center gap-3 animate-in slide-in-from-bottom-2 z-30">
-                         <i data-lucide="loader-2" class="w-5 h-5 text-purple-400 animate-spin"></i>
-                         <span class="text-sm text-slate-300">Consulting AI for improvements...</span>
-                    </div>
-                ` : ''}
-
-                ${state.editorSuggestion ? `
-                    <div class="absolute bottom-0 inset-x-0 bg-slate-900 border-t-2 border-purple-500 shadow-[0_-10px_40px_-10px_rgba(168,85,247,0.2)] flex flex-col animate-in slide-in-from-bottom-full duration-300 max-h-[50%] z-30">
-                         <div class="flex items-center justify-between px-4 py-2 bg-purple-900/20 border-b border-purple-500/20">
-                             <div class="flex items-center gap-2">
-                                <i data-lucide="sparkles" class="w-4 h-4 text-purple-400"></i>
-                                <span class="text-sm font-bold text-purple-200">AI Suggestion</span>
-                             </div>
-                             <button id="btn-discard-ai" class="text-xs text-slate-400 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
-                         </div>
-                         <div class="p-4 overflow-y-auto flex-1 custom-scrollbar">
-                             <p class="text-sm text-slate-300 mb-3">${state.editorSuggestion.explanation}</p>
-                             <div class="relative group">
-                                <pre class="text-xs font-mono bg-black/50 p-3 rounded-lg text-green-300 border border-white/10 overflow-x-auto">${state.editorSuggestion.code}</pre>
-                                <button id="btn-copy-suggestion" class="absolute top-2 right-2 p-1.5 bg-white/10 rounded hover:bg-white/20 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <i data-lucide="copy" class="w-3 h-3"></i>
-                                </button>
-                             </div>
-                         </div>
-                         <div class="p-3 bg-slate-950/50 flex justify-end gap-2 border-t border-white/5">
-                            <button id="btn-discard-ai-bottom" class="px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5 rounded-lg">Discard</button>
-                            <button id="btn-apply-ai" class="px-4 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white rounded-lg shadow-lg shadow-purple-500/20 font-bold flex items-center gap-1">
-                                <i data-lucide="check" class="w-3 h-3"></i> Apply Code
-                            </button>
-                         </div>
+                ${state.isSuggesting || state.editorSuggestion ? `
+                    <div class="w-full md:w-80 bg-slate-900 border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-300">
+                        <div class="p-4 border-b border-white/5 flex items-center justify-between bg-purple-900/10">
+                            <span class="text-xs font-bold text-white uppercase tracking-wider">AI Insight</span>
+                            <button id="close-suggestion" class="text-slate-500 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                            ${state.isSuggesting ? `<div class="p-8 text-center text-slate-500 animate-pulse">Analyzing...</div>` : `
+                                <div class="bg-purple-950/20 border border-purple-500/20 rounded-xl p-4 space-y-3">
+                                    <p class="text-xs text-purple-200 font-medium">${state.editorSuggestion?.explanation}</p>
+                                    <button id="apply-suggestion" class="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold">Apply</button>
+                                </div>
+                            `}
+                        </div>
                     </div>
                 ` : ''}
             </div>
-
-            <!-- LINTING PANEL -->
-            ${renderEditorIssues()}
         </div>
       ` : ''}
     </div>
@@ -396,361 +352,113 @@ export const ProjectStructure = () => {
 };
 
 export const structureListeners = () => {
-    // Toolbar & Uploads
-    const fileInput = document.getElementById('toolbar-file-upload') as HTMLInputElement;
-    const folderInput = document.getElementById('toolbar-folder-upload') as HTMLInputElement;
+    createIcons({ icons });
 
     document.getElementById('btn-new-file')?.addEventListener('click', () => {
-        const name = prompt("Enter file name (e.g. index.html or js/app.js):");
+        const name = prompt("Enter file name (e.g. style.css):");
         if (name) {
-            const path = name.startsWith('www/') ? name : `www/${name}`;
-            fileActions.addFile({ name: path.split('/').pop()!, path, size: 0, type: 'text/plain', content: '' });
-            showToast('File created', 'success');
+            fileActions.addFile({ name, path: 'www/' + name, size: 0, type: 'text/plain', content: '', isFolder: false });
         }
     });
 
     document.getElementById('btn-new-folder')?.addEventListener('click', () => {
-        const name = prompt("Enter folder name (e.g. css):");
+        const name = prompt("Enter folder name:");
         if (name) {
-            const path = name.startsWith('www/') ? name : `www/${name}`;
-            fileActions.addFile({ name: path.split('/').pop()!, path, size: 0, type: 'folder', isFolder: true });
-             showToast('Folder created', 'success');
+            fileActions.addFile({ name, path: 'www/' + name, size: 0, type: 'folder', isFolder: true });
         }
     });
 
-    document.getElementById('btn-upload-file')?.addEventListener('click', () => fileInput?.click());
-    document.getElementById('btn-upload-folder')?.addEventListener('click', () => folderInput?.click());
+    document.getElementById('btn-fix-all')?.addEventListener('click', () => {
+        let currentConfig = { ...state.config };
+        let currentFiles = [...state.files];
+        let changed = false;
 
-    const handleUpload = (e: Event) => {
-        const files = (e.target as HTMLInputElement).files;
-        if (!files) return;
-        let count = 0;
-        Array.from(files).forEach(f => {
-            let relativePath = f.webkitRelativePath || f.name;
-            if (f.webkitRelativePath) {
-                 const parts = f.webkitRelativePath.split('/');
-                 if (parts.length > 1) relativePath = parts.slice(1).join('/'); 
-            }
-            if (relativePath) {
-                fileActions.addFile({ 
-                    name: f.name, 
-                    path: `www/${relativePath}`, 
-                    size: f.size, 
-                    type: f.type, 
-                    nativeFile: f 
-                });
-                count++;
-            }
-        });
-        showToast(`${count} files uploaded`, 'success');
-        if(fileInput) fileInput.value = '';
-        if(folderInput) folderInput.value = '';
-    };
-
-    fileInput?.addEventListener('change', handleUpload);
-    folderInput?.addEventListener('change', handleUpload);
-
-    // Row Actions - Open Editor on Click
-    document.querySelectorAll('[data-row-file]').forEach(row => {
-        row.addEventListener('click', async (e) => {
-            // Check if it's editable text file
-            const path = row.getAttribute('data-row-file');
-            const isEditable = row.getAttribute('data-editable') === 'true';
-
-            if (path && isEditable) {
-                const file = state.files.find(f => f.path === path);
-                if (file) {
-                    let content = file.content || '';
-                    if (!content && file.nativeFile) {
-                        try { content = await file.nativeFile.text(); } 
-                        catch(e) { showToast("Error reading file", 'error'); return; }
-                    }
-                    // Initial highlight & analyze
-                    const highlighted = highlightCode(content, path);
-                    const issues = analyzeCode(content, path);
-                    updateState({ editingPath: path, editorContent: content, editorHighlightedContent: highlighted, editorIssues: issues, editorSuggestion: null, isSuggesting: false });
+        state.issues.forEach(issue => {
+            if (issue.autoFixAvailable) {
+                const { config, newFiles } = applyAutoFix(issue.id, currentConfig, currentFiles);
+                if (config) {
+                    currentConfig = { ...currentConfig, ...config };
+                    changed = true;
+                }
+                if (newFiles) {
+                    currentFiles = newFiles;
+                    changed = true;
                 }
             }
         });
+
+        if (changed) {
+            state.config = currentConfig;
+            state.files = currentFiles;
+            updateState({});
+            showToast("Project issues fixed", "success");
+        }
     });
 
-    // Button Actions
-    document.querySelectorAll('button[data-action]').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation(); // Stop row click event
-            const action = btn.getAttribute('data-action');
-            const path = btn.getAttribute('data-path') || '';
-
-            if (action === 'delete') {
-                if (confirm(`Delete ${path}?`)) {
-                    fileActions.removeFile(path);
-                    showToast('Deleted ' + path, 'info');
-                }
-            } else if (action === 'rename') {
-                const currentName = path.split('/').pop();
-                const newName = prompt("Rename to:", currentName);
-                if (newName && newName !== currentName) {
-                    const parts = path.split('/');
-                    parts.pop();
-                    const newPath = parts.length > 0 ? `${parts.join('/')}/${newName}` : newName;
-                    fileActions.renameFile(path, newPath);
-                    showToast('Renamed successfully', 'success');
-                }
-            } else if (action === 'edit-content') {
-                const file = state.files.find(f => f.path === path);
-                if (file) {
-                    let content = file.content || '';
-                    if (!content && file.nativeFile) {
-                        try { content = await file.nativeFile.text(); } 
-                        catch(e) { showToast("Error reading file", 'error'); return; }
-                    }
-                     // Initial highlight & analyze
-                    const highlighted = highlightCode(content, path);
-                    const issues = analyzeCode(content, path);
-                    updateState({ editingPath: path, editorContent: content, editorHighlightedContent: highlighted, editorIssues: issues, editorSuggestion: null, isSuggesting: false });
-                } else {
-                    showToast("This file cannot be edited", 'error');
-                }
-            }
-        });
-    });
-
-    // Auto Fix Listeners
-    const fixAllBtn = document.getElementById('btn-fix-all');
-    if (fixAllBtn) {
-        fixAllBtn.addEventListener('click', () => {
-            // Apply all fixes
-            let updates: any = {};
-            let fileUpdates: any[] = [];
-            
-            state.issues.filter(i => i.autoFixAvailable).forEach(issue => {
-                const result = applyAutoFix(issue.id, state.config, state.files);
-                if (result.config) updates = { ...updates, ...result.config };
-                if (result.newFiles) fileUpdates = [...fileUpdates, ...result.newFiles];
-            });
-
-            if (fileUpdates.length > 0) {
-                fileUpdates.forEach(f => fileActions.addFile(f));
-            }
-            if (Object.keys(updates).length > 0) {
-                updateConfig(updates);
-            }
-            showToast('Auto-fix applied', 'success');
-        });
-    }
-    
-    // Individual Fix Project Issues
     document.querySelectorAll('[data-fix-id]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-fix-id')!;
+            const { config, newFiles } = applyAutoFix(id, state.config, state.files);
+            if (config) updateConfig(config);
+            if (newFiles) updateState({ files: newFiles });
+            showToast("Fixed " + id, "success");
+        });
+    });
+
+    document.querySelectorAll('[data-action="delete"]').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const id = btn.getAttribute('data-fix-id');
-            if (id) {
-                 const result = applyAutoFix(id, state.config, state.files);
-                 if (result.config) updateConfig(result.config);
-                 if (result.newFiles) result.newFiles.forEach(f => fileActions.addFile(f));
-                 showToast('Issue fixed', 'success');
+            const path = btn.getAttribute('data-path')!;
+            if (confirm(`Delete ${path}?`)) { fileActions.removeFile(path); }
+        });
+    });
+
+    document.querySelectorAll('[data-action="rename"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const path = btn.getAttribute('data-path')!;
+            const newName = prompt("Rename to:", path);
+            if (newName && newName !== path) { fileActions.renameFile(path, newName); }
+        });
+    });
+
+    document.querySelectorAll('[data-action="edit-content"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const path = btn.getAttribute('data-path')!;
+            const file = state.files.find(f => f.path === path || 'www/'+f.path === path);
+            if (file) {
+                state.editingPath = path;
+                state.editorContent = file.content || '';
+                state.editorHighlightedContent = highlightCode(state.editorContent, path);
+                state.editorIssues = analyzeCode(state.editorContent, path);
+                updateState({});
             }
         });
     });
 
-    // Editor Logic (Save, Cancel, Copy, Paste)
-    const editorSave = document.getElementById('editor-save');
-    const editorCancel = document.getElementById('editor-cancel');
-    const editorArea = document.getElementById('file-editor-area') as HTMLTextAreaElement;
-    const highlightLayer = document.getElementById('editor-highlight-layer');
-    const editorCopy = document.getElementById('editor-copy');
-    const editorPaste = document.getElementById('editor-paste');
-    const editorAI = document.getElementById('editor-ai');
+    if (state.editingPath) {
+        const textarea = document.getElementById('editor-textarea') as HTMLTextAreaElement;
+        const highlightLayer = document.getElementById('editor-highlight');
 
-    // SYNC SCROLL & INPUT FOR HIGHLIGHTING
-    if (editorArea && highlightLayer && state.editingPath) {
-        const syncScroll = () => {
-            if (highlightLayer.parentElement) {
-                highlightLayer.parentElement.scrollTop = editorArea.scrollTop;
-                highlightLayer.parentElement.scrollLeft = editorArea.scrollLeft;
-            }
-        };
-
-        const handleInput = () => {
-             const val = editorArea.value;
-             // Update highlight layer
-             if (state.editingPath) {
-                 const highlighted = highlightCode(val, state.editingPath);
-                 highlightLayer.innerHTML = highlighted;
-                 
-                 // Update Issues (Debounce ideally, but kept simple here)
-                 const issues = analyzeCode(val, state.editingPath);
-                 // We don't want to re-render entire app on every keystroke if issues didn't change
-                 // But for simplicity in this architecture, we update state.
-                 // Ideally this would be optimized.
-                 if(JSON.stringify(issues) !== JSON.stringify(state.editorIssues)) {
-                      updateState({ 
-                          editorIssues: issues, 
-                          editorContent: val,
-                          editorHighlightedContent: highlighted 
-                      });
-                 } else {
-                     // Just update content without re-render to keep cursor focus
-                     state.editorContent = val;
-                 }
-             }
-        };
-
-        editorArea.addEventListener('scroll', syncScroll);
-        editorArea.addEventListener('input', handleInput);
-    }
-
-    // EDITOR LINTING ACTIONS
-    // 1. Manual Fix (Scroll to line)
-    document.querySelectorAll('[data-manual-fix]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const line = parseInt(btn.getAttribute('data-manual-fix') || '1');
-            const lineHeight = 21; // Approx 1.5 * 14px
-            const scrollPos = (line - 1) * lineHeight;
-            if(editorArea) {
-                editorArea.scrollTop = scrollPos;
-                editorArea.focus();
-                // Select the line (rough logic)
-                const lines = editorArea.value.split('\n');
-                let startPos = 0;
-                for(let i=0; i<line-1; i++) startPos += lines[i].length + 1;
-                editorArea.setSelectionRange(startPos, startPos + lines[line-1].length);
-            }
+        textarea?.addEventListener('input', (e) => {
+            const val = (e.target as HTMLTextAreaElement).value;
+            state.editorContent = val;
+            state.editorHighlightedContent = highlightCode(val, state.editingPath!);
+            state.editorIssues = analyzeCode(val, state.editingPath!);
+            if (highlightLayer) highlightLayer.innerHTML = state.editorHighlightedContent;
         });
-    });
 
-    // 2. Auto Fix (Apply Snippet)
-    document.querySelectorAll('[data-auto-fix]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const id = btn.getAttribute('data-auto-fix');
-            const issue = state.editorIssues.find(i => i.id === id);
-            if(issue && editorArea && state.editingPath) {
-                const newContent = applyLintFix(editorArea.value, issue);
-                editorArea.value = newContent;
-                
-                // Trigger Input Event to update state/highlights
-                const event = new Event('input', { bubbles: true });
-                editorArea.dispatchEvent(event);
-                showToast('Fix applied', 'success');
-            }
+        document.getElementById('editor-save')?.addEventListener('click', () => {
+            fileActions.updateContent(state.editingPath!, state.editorContent);
+            showToast("Saved", "success");
+            state.editingPath = null;
+            updateState({});
         });
-    });
 
-
-    if (editorSave && state.editingPath) {
-        editorSave.onclick = () => {
-             const newContent = editorArea.value;
-             if (state.editingPath) {
-                 fileActions.updateContent(state.editingPath, newContent);
-             }
-             updateState({ editingPath: null, editorContent: '', editorHighlightedContent: '', editorIssues: [], editorSuggestion: null, isSuggesting: false });
-             showToast('File saved successfully', 'success');
-        };
-    }
-    
-    // AI Assistant Logic
-    if (editorAI && state.editingPath && !state.isSuggesting) {
-        editorAI.onclick = async () => {
-             updateState({ isSuggesting: true, editorSuggestion: null });
-             try {
-                 const currentContent = editorArea.value;
-                 const result = await generateCodeSuggestion(state.editingPath!, currentContent);
-                 updateState({ isSuggesting: false, editorSuggestion: result });
-             } catch (e) {
-                 showToast("AI Suggestion failed. Check API Key.", 'error');
-                 updateState({ isSuggesting: false });
-             }
-        };
-    }
-
-    // AI Panel Actions
-    const btnDiscardAI = document.getElementById('btn-discard-ai');
-    const btnDiscardAIBottom = document.getElementById('btn-discard-ai-bottom');
-    const btnApplyAI = document.getElementById('btn-apply-ai');
-    const btnCopySuggestion = document.getElementById('btn-copy-suggestion');
-
-    if (btnDiscardAI) btnDiscardAI.onclick = () => updateState({ editorSuggestion: null });
-    if (btnDiscardAIBottom) btnDiscardAIBottom.onclick = () => updateState({ editorSuggestion: null });
-    
-    if (btnApplyAI && editorArea && state.editorSuggestion) {
-        btnApplyAI.onclick = () => {
-             const newCode = state.editorSuggestion!.code;
-             const start = editorArea.selectionStart;
-             const value = editorArea.value;
-             
-             // Simple append if cursor is at end, or insert at cursor
-             if (start === value.length) {
-                 editorArea.value = value + '\n' + newCode;
-             } else {
-                 editorArea.value = value.substring(0, start) + newCode + value.substring(editorArea.selectionEnd);
-             }
-             
-             // Update logic (trigger input event to re-highlight)
-             const event = new Event('input', { bubbles: true });
-             editorArea.dispatchEvent(event);
-             
-             updateState({ editorContent: editorArea.value, editorSuggestion: null });
-        };
-    }
-    
-    if (btnCopySuggestion && state.editorSuggestion) {
-        btnCopySuggestion.onclick = () => {
-            navigator.clipboard.writeText(state.editorSuggestion!.code);
-            btnCopySuggestion.innerHTML = `<i data-lucide="check" class="w-3 h-3 text-green-400"></i>`;
-            createIcons({ icons });
-            setTimeout(() => {
-                btnCopySuggestion.innerHTML = `<i data-lucide="copy" class="w-3 h-3"></i>`;
-                createIcons({ icons });
-            }, 1500);
-        };
-    }
-
-    if (editorCopy && editorArea) {
-        editorCopy.onclick = () => {
-            navigator.clipboard.writeText(editorArea.value).then(() => {
-                // Visual feedback: Change icon momentarily
-                const originalHtml = editorCopy.innerHTML;
-                editorCopy.innerHTML = `<i data-lucide="check" class="w-4 h-4 text-green-400"></i>`;
-                createIcons({ icons });
-                setTimeout(() => {
-                    editorCopy.innerHTML = `<i data-lucide="copy" class="w-4 h-4"></i>`;
-                    createIcons({ icons });
-                }, 1500);
-            });
-        };
-    }
-
-    if (editorPaste && editorArea) {
-        editorPaste.onclick = async () => {
-            try {
-                const text = await navigator.clipboard.readText();
-                if (text) {
-                    const start = editorArea.selectionStart;
-                    const end = editorArea.selectionEnd;
-                    const value = editorArea.value;
-                    // Insert text at cursor position
-                    editorArea.value = value.substring(0, start) + text + value.substring(end);
-                    // Move cursor to end of pasted text
-                    editorArea.selectionStart = editorArea.selectionEnd = start + text.length;
-                    
-                    // Trigger update
-                    const event = new Event('input', { bubbles: true });
-                    editorArea.dispatchEvent(event);
-
-                    editorArea.focus();
-                }
-            } catch (err) {
-                showToast("Clipboard permission denied", 'error');
-            }
-        };
-    }
-
-    if (editorCancel) editorCancel.onclick = () => updateState({ editingPath: null, editorContent: '', editorHighlightedContent: '', editorIssues: [], editorSuggestion: null, isSuggesting: false });
-    if (editorArea) {
-        editorArea.focus();
-        // Trigger initial scroll sync
-        if (highlightLayer && highlightLayer.parentElement) {
-             highlightLayer.parentElement.scrollTop = editorArea.scrollTop;
-        }
+        document.getElementById('editor-close')?.addEventListener('click', () => {
+            state.editingPath = null;
+            updateState({});
+        });
     }
 };

@@ -26,8 +26,7 @@ export const Upgrade = (user: UserProfile) => {
                     <!-- QRIS Section -->
                     <div class="flex flex-col items-center space-y-4">
                         <div class="bg-white p-4 rounded-xl shadow-lg transform hover:scale-105 transition-transform duration-300">
-                            <!-- Using absolute path /rqis.jpg assumes file is in public folder or served at root -->
-                            <img src="/rqis.jpg" alt="Scan QRIS" class="w-48 h-48 object-contain" onerror="this.src='https://placehold.co/200x200/white/black?text=QRIS+IMAGE+MISSING'"/>
+                            <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgHwO_-Mp4mmE5tIQgvrs8ZzsUiKwMWROUa8XAMFdKpYGzqxAXR9ciCYRZ9LBt-i1ukxzhTVQw_mcKbCm5jzFe6vySjmowjplpTMJBwV5HVfETSH6WwqlWHY2BEn_rMJn4jXXRX5ylMRwDGPssCFolj5akwy1Ny-Y3_JHFQZK3Jdf4HzaFwuBRXqwcDVhI/s407/qris.jpg" alt="Scan QRIS" class="w-48 h-48 object-contain" onerror="this.src='https://placehold.co/200x200/white/black?text=QRIS+IMAGE+MISSING'"/>
                         </div>
                         <p class="text-xs text-slate-500 text-center">Scan QRIS via GoPay, OVO, Dana, BCA, etc.</p>
                     </div>

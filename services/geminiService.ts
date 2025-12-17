@@ -1,8 +1,6 @@
-
-import { GoogleGenAI } from "@google/genai";
+// Standard Google GenAI SDK imports
+import { GoogleGenAI, Type } from "@google/genai";
 import { ProjectConfig, SourceType, GeneratedResult, AssetEntry } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const generateProjectConfig = async (
   config: ProjectConfig, 
@@ -13,7 +11,9 @@ export const generateProjectConfig = async (
     throw new Error("API Key is missing");
   }
 
-  const model = "gemini-2.5-flash";
+  // Initialize right before call per guidelines
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const model = "gemini-3-pro-preview";
 
   // Prepare Asset Summary for AI
   let assetInstructions = "No custom icons or splash screens detected. Use default Cordova assets.";
@@ -82,15 +82,6 @@ export const generateProjectConfig = async (
     Task 2: Provide a short analysis (max 3 sentences) suggesting what plugins might be needed.
 
     Task 3: List specifically what permissions/privacy descriptions were added or are recommended.
-
-    Output Format (JSON):
-    {
-      "configXml": "string (full xml content)",
-      "analysis": "string",
-      "permissions": [
-        { "platform": "ios" | "android" | "both", "name": "string (e.g. NSCameraUsageDescription)", "reason": "string (why it is needed)" }
-      ]
-    }
   `;
 
   try {
@@ -98,7 +89,28 @@ export const generateProjectConfig = async (
       model,
       contents: contextPrompt,
       config: {
+        thinkingConfig: { thinkingBudget: 32768 },
         responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            configXml: { type: Type.STRING, description: "Full generated config.xml content" },
+            analysis: { type: Type.STRING, description: "Short project analysis" },
+            permissions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  platform: { type: Type.STRING, description: "ios, android, or both" },
+                  name: { type: Type.STRING, description: "Permission name" },
+                  reason: { type: Type.STRING, description: "Why it is needed" }
+                },
+                required: ["platform", "name", "reason"]
+              }
+            }
+          },
+          required: ["configXml", "analysis", "permissions"]
+        }
       }
     });
 
@@ -109,7 +121,7 @@ export const generateProjectConfig = async (
     return {
         configXml: json.configXml || '',
         analysis: json.analysis || '',
-        readme: '', // Placeholder
+        readme: '', 
         permissions: json.permissions || []
     };
   } catch (error) {
@@ -121,7 +133,8 @@ export const generateProjectConfig = async (
 export const analyzeUrlRequirements = async (url: string, type: SourceType = 'url'): Promise<Partial<ProjectConfig>> => {
     if (!process.env.API_KEY) return {};
 
-    const model = "gemini-2.5-flash";
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const model = "gemini-3-flash-preview";
     const prompt = type === 'github' 
       ? `
           Analyze this GitHub repository URL: "${url}".
@@ -139,7 +152,16 @@ export const analyzeUrlRequirements = async (url: string, type: SourceType = 'ur
         model,
         contents: prompt,
         config: {
-          responseMimeType: "application/json"
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              id: { type: Type.STRING },
+              description: { type: Type.STRING }
+            },
+            required: ["name", "id", "description"]
+          }
         }
       });
       return JSON.parse(response.text || "{}");
@@ -155,7 +177,8 @@ export const generateCodeSuggestion = async (
 ): Promise<{ explanation: string, code: string }> => {
     if (!process.env.API_KEY) throw new Error("API Key missing");
 
-    const model = "gemini-2.5-flash";
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const model = "gemini-3-flash-preview";
     const prompt = `
         You are a smart coding assistant for a Hybrid Mobile App (Cordova).
         
@@ -180,7 +203,17 @@ export const generateCodeSuggestion = async (
         const response = await ai.models.generateContent({
             model,
             contents: prompt,
-            config: { responseMimeType: "application/json" }
+            config: { 
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  explanation: { type: Type.STRING },
+                  code: { type: Type.STRING }
+                },
+                required: ["explanation", "code"]
+              }
+            }
         });
         return JSON.parse(response.text || "{}");
     } catch (e) {

@@ -1,4 +1,5 @@
 
+// Standard modular Firebase v9+ imports
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
@@ -14,6 +15,7 @@ const firebaseConfig = {
   measurementId: "G-69TMT88K81"
 };
 
+// initializeApp is imported directly as a named export from firebase/app
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);

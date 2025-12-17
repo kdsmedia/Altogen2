@@ -32,31 +32,37 @@ export const validateProject = (
     issues.push({
       id: 'invalid-name',
       severity: 'warning',
-      message: 'App Name is too short.',
-      autoFixAvailable: false,
+      message: 'App Name is too short or missing.',
+      autoFixAvailable: true,
       field: 'name'
     });
   }
 
   // 3. Validate Entry Point (index.html)
-  // Only critical if source type is folder or manual structure
-  if (config.sourceType === 'folder' || config.sourceType === 'url') {
-      // For URL, we generate a wrapper, so strictly checking file list implies checking if the wrapper gen logic works.
-      // But for 'folder', user MUST provide it.
-      if (config.sourceType === 'folder') {
-          const hasIndex = files.some(f => f.path === 'www/index.html' || f.path === 'index.html');
-          if (!hasIndex) {
-              issues.push({
-                  id: 'missing-index',
-                  severity: 'error',
-                  message: 'Missing "index.html" in uploaded assets. App will not launch.',
-                  autoFixAvailable: true // We can create a placeholder
-              });
-          }
+  if (config.sourceType === 'folder') {
+      const hasIndex = files.some(f => f.path === 'www/index.html' || f.path === 'index.html');
+      if (!hasIndex) {
+          issues.push({
+              id: 'missing-index',
+              severity: 'error',
+              message: 'Missing "index.html" in uploaded assets. App will not launch.',
+              autoFixAvailable: true
+          });
       }
   }
 
-  // 4. Validate Assets
+  // 4. Validate Directory Prefix
+  const unPrefixedFiles = files.filter(f => !f.isVirtual && !f.path.startsWith('www/'));
+  if (unPrefixedFiles.length > 0) {
+      issues.push({
+          id: 'missing-www-prefix',
+          severity: 'warning',
+          message: `${unPrefixedFiles.length} file(s) are missing the "www/" prefix required for assets.`,
+          autoFixAvailable: true
+      });
+  }
+
+  // 5. Validate Assets
   const hasAndroidIcon = assets.some(a => a.platform === 'android');
   const hasIosIcon = assets.some(a => a.platform === 'ios');
 
@@ -77,7 +83,7 @@ export const validateProject = (
       });
   }
 
-  // 5. Source Value Check
+  // 6. Source Value Check
   if (!config.sourceValue && config.sourceType !== 'folder') {
        issues.push({
           id: 'missing-source',
@@ -93,25 +99,38 @@ export const validateProject = (
 // Helper to auto-fix issues
 export const applyAutoFix = (issueId: string, currentConfig: ProjectConfig, currentFiles: FileEntry[]): { config?: Partial<ProjectConfig>, newFiles?: FileEntry[] } => {
     switch(issueId) {
-        case 'invalid-id':
-            // Generate a valid ID based on name
+        case 'invalid-id': {
             const cleanName = currentConfig.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-            return { config: { id: `com.app.${cleanName || 'generated'}` } };
+            return { config: { id: `com.altogen.${cleanName || 'app'}` } };
+        }
         
         case 'missing-id':
-             return { config: { id: 'com.example.myapp' } };
+             return { config: { id: 'com.altogen.studio.app' } };
 
-        case 'missing-index':
-            // Generate a placeholder index.html
+        case 'invalid-name':
+             return { config: { name: 'AltoGen_App' } };
+
+        case 'missing-index': {
             const file: FileEntry = {
                 name: 'index.html',
                 path: 'www/index.html',
-                size: 100,
+                size: 320,
                 type: 'text/html',
-                content: '<!DOCTYPE html><html><body><h1>Welcome</h1></body></html>',
+                content: '<!DOCTYPE html>\n<html>\n<head>\n    <title>My App</title>\n</head>\n<body>\n    <h1>Hello Cordova!</h1>\n    <script src="cordova.js"></script>\n</body>\n</html>',
                 isFolder: false
             };
             return { newFiles: [...currentFiles, file] };
+        }
+
+        case 'missing-www-prefix': {
+            const updatedFiles = currentFiles.map(f => {
+                if (!f.isVirtual && !f.path.startsWith('www/')) {
+                    return { ...f, path: 'www/' + f.path };
+                }
+                return f;
+            });
+            return { newFiles: updatedFiles };
+        }
 
         default:
             return {};
