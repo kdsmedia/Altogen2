@@ -15,7 +15,7 @@ export interface AdConfig {
 export interface PreferenceConfig {
   orientation: 'default' | 'portrait' | 'landscape';
   fullscreen: boolean;
-  backgroundColor: string; // Hex code without #
+  backgroundColor: string;
   disallowOverscroll: boolean;
   hideSplashScreenSpinner: boolean;
 }
@@ -40,13 +40,13 @@ export interface ProjectConfig {
 
 export interface FileEntry {
   name: string;
-  path: string; // Full relative path e.g. "css/style.css"
+  path: string;
   size: number;
   type: string;
-  nativeFile?: File; // For uploaded files
-  content?: string; // For manually created text files
+  nativeFile?: File;
+  content?: string;
   isFolder?: boolean;
-  isVirtual?: boolean; // System generated files
+  isVirtual?: boolean;
 }
 
 export interface AssetEntry {
@@ -54,8 +54,8 @@ export interface AssetEntry {
   assetType?: 'icon' | 'splash';
   name: string;
   blob: Blob;
-  size: number; // width in px
-  height?: number; // height in px (for splash screens)
+  size: number;
+  height?: number;
 }
 
 export interface PermissionEntry {
@@ -76,7 +76,7 @@ export interface ProjectIssue {
   severity: 'error' | 'warning' | 'info';
   message: string;
   autoFixAvailable: boolean;
-  field?: keyof ProjectConfig; // If related to a config field
+  field?: keyof ProjectConfig;
 }
 
 export interface EditorIssue {
@@ -87,8 +87,6 @@ export interface EditorIssue {
     snippet: string; 
     fixSuggestion?: string; 
 }
-
-// --- NEW AUTH TYPES ---
 
 export interface UserProfile {
     uid: string;
@@ -108,7 +106,7 @@ export interface UpgradeRequest {
     accountNumber: string;
     accountHolder: string;
     status: 'pending' | 'approved' | 'rejected';
-    timestamp: any; // Firestore timestamp
+    timestamp: any;
 }
 
 export enum ViewMode {
@@ -120,7 +118,6 @@ export enum ViewMode {
   ABOUT = 'ABOUT',
   PRIVACY = 'PRIVACY',
   DISCLAIMER = 'DISCLAIMER',
-  // NEW MODES
   PROFILE = 'PROFILE',
   UPGRADE = 'UPGRADE',
   ADMIN_PANEL = 'ADMIN_PANEL'
