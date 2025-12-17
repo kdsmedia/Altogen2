@@ -10,10 +10,12 @@ import { InfoPages } from './components/InfoPages';
 import { Profile, profileListeners } from './components/Profile';
 import { Upgrade, upgradeListeners } from './components/Upgrade';
 import { AdminPanel, adminListeners } from './components/AdminPanel';
+import { SearchPalette, searchListeners } from './components/SearchPalette';
 import { ViewMode, ProjectConfig, FileEntry, AssetEntry, ProjectIssue, EditorIssue, UserProfile } from './types';
 import { validateProject } from './services/validationService';
 import { saveProject, loadProject, resetProject } from './services/storageService';
 import { saveProjectToCloud, loadProjectFromCloud, subscribeToAuth } from './services/firebaseService';
+import { highlightCode, analyzeCode } from './services/syntaxService';
 
 // Add type for custom window function
 declare global {
@@ -26,6 +28,7 @@ declare global {
 export const state = {
   currentMode: ViewMode.SETUP,
   isMenuOpen: false,
+  isSearchOpen: false, // Added for global search
   editingPath: null as string | null, 
   editorContent: '',
   editorHighlightedContent: '', 
@@ -375,15 +378,27 @@ function renderApp() {
          ${Sidebar(state.currentMode)}
       </div>
       <div id="toast-container" class="fixed bottom-6 right-6 z-[100] flex flex-col gap-2 pointer-events-none"></div>
+      
+      <!-- GLOBAL SEARCH PALETTE -->
+      ${state.isSearchOpen ? SearchPalette() : ''}
 
       <main class="h-full w-full relative z-10 flex flex-col">
         <div class="absolute inset-0 pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay"></div>
         
         <div class="absolute top-0 left-0 right-0 z-30 p-6 flex items-center justify-between pointer-events-none">
-           <button id="menu-toggle" class="pointer-events-auto p-3 bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl text-white hover:bg-cyan-500/10 hover:text-cyan-400 transition-all shadow-lg group">
-              <i data-lucide="menu" class="w-6 h-6 transform group-hover:scale-110 transition-transform"></i>
-              ${state.issues.filter(i => i.severity === 'error').length > 0 ? `<div class="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>` : ''}
-           </button>
+           <div class="flex items-center gap-4 pointer-events-auto">
+               <button id="menu-toggle" class="p-3 bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl text-white hover:bg-cyan-500/10 hover:text-cyan-400 transition-all shadow-lg group">
+                  <i data-lucide="menu" class="w-6 h-6 transform group-hover:scale-110 transition-transform"></i>
+                  ${state.issues.filter(i => i.severity === 'error').length > 0 ? `<div class="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>` : ''}
+               </button>
+               
+               <!-- Search Trigger -->
+               <button id="search-trigger" class="hidden md:flex items-center gap-3 px-4 py-2 bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl text-slate-400 hover:text-white transition-all shadow-lg group w-64 text-left">
+                  <i data-lucide="search" class="w-4 h-4 text-cyan-500"></i>
+                  <span class="text-sm font-medium flex-1">Quick Search...</span>
+                  <span class="text-[10px] bg-white/5 border border-white/10 px-1.5 py-0.5 rounded font-mono">⌘K</span>
+               </button>
+           </div>
            
            <div class="pointer-events-auto flex gap-4">
                ${state.issues.length > 0 ? `
@@ -439,6 +454,18 @@ function renderApp() {
      }
      
      if (sidebarContainer) sidebarContainer.innerHTML = Sidebar(state.currentMode);
+
+     // Update Search Palette visibility in place if possible
+     const paletteOverlay = document.getElementById('search-palette-overlay');
+     if (!paletteOverlay && state.isSearchOpen) {
+         const paletteHtml = SearchPalette();
+         const temp = document.createElement('div');
+         temp.innerHTML = paletteHtml;
+         document.body.appendChild(temp.firstElementChild!);
+         searchListeners();
+     } else if (paletteOverlay && !state.isSearchOpen) {
+         paletteOverlay.remove();
+     }
   }
   
   createIcons({ icons });
@@ -451,6 +478,7 @@ function renderApp() {
   else if (state.currentMode === ViewMode.PROFILE) profileListeners();
   else if (state.currentMode === ViewMode.UPGRADE && state.user) upgradeListeners(state.user);
   else if (state.currentMode === ViewMode.ADMIN_PANEL && state.user) adminListeners();
+  if (state.isSearchOpen) searchListeners();
   
   attachGlobalListeners();
 }
@@ -470,7 +498,21 @@ function attachGlobalListeners() {
 
   const closeBtn = document.getElementById('menu-close');
   if (closeBtn) closeBtn.onclick = () => updateState({ isMenuOpen: false });
+
+  const searchTrigger = document.getElementById('search-trigger');
+  if (searchTrigger) searchTrigger.onclick = () => updateState({ isSearchOpen: true });
   
+  // Shortcut for Search Palette
+  window.onkeydown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+          e.preventDefault();
+          updateState({ isSearchOpen: !state.isSearchOpen });
+      }
+      if (e.key === 'Escape' && state.isSearchOpen) {
+          updateState({ isSearchOpen: false });
+      }
+  };
+
   const resetBtn = document.getElementById('btn-reset-project');
   if (resetBtn) {
       resetBtn.onclick = () => {

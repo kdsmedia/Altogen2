@@ -1,3 +1,4 @@
+
 // Standard Google GenAI SDK imports
 import { GoogleGenAI, Type } from "@google/genai";
 import { ProjectConfig, SourceType, GeneratedResult, AssetEntry } from "../types";
@@ -12,6 +13,7 @@ export const generateProjectConfig = async (
   }
 
   // Initialize right before call per guidelines
+  // Use gemini-3-pro-preview for complex reasoning and configuration tasks
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = "gemini-3-pro-preview";
 
@@ -114,6 +116,7 @@ export const generateProjectConfig = async (
       }
     });
 
+    // Directly access the .text property of GenerateContentResponse
     const text = response.text;
     if (!text) throw new Error("No response from AI");
     
@@ -133,6 +136,8 @@ export const generateProjectConfig = async (
 export const analyzeUrlRequirements = async (url: string, type: SourceType = 'url'): Promise<Partial<ProjectConfig>> => {
     if (!process.env.API_KEY) return {};
 
+    // Initialize right before call per guidelines
+    // Use gemini-3-flash-preview for general text and analysis tasks
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = "gemini-3-flash-preview";
     const prompt = type === 'github' 
@@ -177,8 +182,10 @@ export const generateCodeSuggestion = async (
 ): Promise<{ explanation: string, code: string }> => {
     if (!process.env.API_KEY) throw new Error("API Key missing");
 
+    // Initialize right before call per guidelines
+    // Use gemini-3-pro-preview for advanced coding tasks
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const model = "gemini-3-flash-preview";
+    const model = "gemini-3-pro-preview";
     const prompt = `
         You are a smart coding assistant for a Hybrid Mobile App (Cordova).
         
