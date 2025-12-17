@@ -7,9 +7,15 @@ import { createIcons, icons } from 'lucide';
 let requests: UpgradeRequest[] = [];
 let totalUsers = 0;
 let loading = true;
+let errorOccurred = false;
 
 const loadData = async () => {
+    loading = true;
+    errorOccurred = false;
+    renderContent();
+    
     try {
+        // Jalankan fetch. Jika rules membatasi, firebaseService sekarang mengembalikan array kosong alih-alih melempar error keras.
         const [reqs, count] = await Promise.all([
             getUpgradeRequests(),
             getTotalUsersCount()
@@ -17,8 +23,8 @@ const loadData = async () => {
         requests = reqs;
         totalUsers = count;
     } catch (e) {
-        console.error(e);
-        showToast("Error loading admin data", "error");
+        console.error("Admin Load Error:", e);
+        errorOccurred = true;
     } finally {
         loading = false;
         renderContent();
@@ -33,7 +39,20 @@ const renderContent = () => {
         container.innerHTML = `
             <div class="flex flex-col items-center justify-center h-64 text-slate-500">
                 <i data-lucide="loader-2" class="w-8 h-8 animate-spin mb-2"></i>
-                <p>Loading Admin Data...</p>
+                <p>Sinkronisasi Data Admin...</p>
+            </div>
+        `;
+        createIcons({ icons });
+        return;
+    }
+
+    if (errorOccurred) {
+        container.innerHTML = `
+            <div class="p-8 text-center bg-red-500/10 border border-red-500/20 rounded-xl">
+                <i data-lucide="shield-off" class="w-12 h-12 text-red-400 mx-auto mb-4"></i>
+                <h3 class="text-white font-bold mb-2">Akses Terbatas</h3>
+                <p class="text-slate-400 text-sm mb-4">Gagal memuat data dari koleksi Firestore. Pastikan Firebase Rules Anda mengizinkan akses admin.</p>
+                <button onclick="loadData()" class="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors">Coba Lagi</button>
             </div>
         `;
         createIcons({ icons });
@@ -47,7 +66,7 @@ const renderContent = () => {
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div class="bg-slate-800 p-6 rounded-xl border border-white/5">
                 <p class="text-slate-400 text-xs uppercase font-bold">Total Users</p>
-                <p class="text-3xl font-bold text-white mt-2">${totalUsers}</p>
+                <p class="text-3xl font-bold text-white mt-2">${totalUsers || '-'}</p>
             </div>
             <div class="bg-slate-800 p-6 rounded-xl border border-white/5">
                 <p class="text-slate-400 text-xs uppercase font-bold">Pending Requests</p>
@@ -65,7 +84,7 @@ const renderContent = () => {
         
         <div class="bg-slate-900 border border-white/5 rounded-xl overflow-hidden mb-8">
             ${pendingRequests.length === 0 ? `
-                <div class="p-8 text-center text-slate-500">No pending requests</div>
+                <div class="p-8 text-center text-slate-500">Tidak ada permintaan tertunda</div>
             ` : `
                 <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -90,7 +109,7 @@ const renderContent = () => {
                                     <div class="text-slate-400 text-xs">A.N ${req.accountHolder}</div>
                                 </td>
                                 <td class="p-4">
-                                   <span class="text-xs text-slate-500 italic">Check bank mutation</span>
+                                   <span class="text-xs text-slate-500 italic">Cek Mutasi</span>
                                 </td>
                                 <td class="p-4 text-right">
                                     <div class="flex justify-end gap-2">
@@ -149,14 +168,14 @@ const attachListeners = () => {
             const reqId = el.getAttribute('data-approve')!;
             const userId = el.getAttribute('data-uid')!;
             
-            if(confirm("Accept payment and upgrade user to PREMIUM?")) {
+            if(confirm("Terima pembayaran dan upgrade user ke PREMIUM?")) {
                 el.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>`;
                 try {
                     await processUpgradeRequest(reqId, userId, 'approved');
-                    showToast("User upgraded successfully", "success");
-                    loadData(); // Refresh
+                    showToast("User berhasil di-upgrade", "success");
+                    loadData(); 
                 } catch(err) {
-                    showToast("Failed to process", "error");
+                    showToast("Gagal memproses", "error");
                     loadData();
                 }
             }
@@ -169,13 +188,13 @@ const attachListeners = () => {
             const reqId = el.getAttribute('data-reject')!;
             const userId = el.getAttribute('data-uid')!;
             
-            if(confirm("Reject this request?")) {
+            if(confirm("Tolak permintaan ini?")) {
                  try {
                     await processUpgradeRequest(reqId, userId, 'rejected');
-                    showToast("Request rejected", "info");
-                    loadData(); // Refresh
+                    showToast("Permintaan ditolak", "info");
+                    loadData(); 
                 } catch(err) {
-                    showToast("Failed to process", "error");
+                    showToast("Gagal memproses", "error");
                 }
             }
         });
@@ -184,7 +203,14 @@ const attachListeners = () => {
 
 export const AdminPanel = (user: UserProfile) => {
     if (user.role !== 'admin') {
-        return `<div class="p-8 text-center text-red-500 font-bold">ACCESS DENIED. ADMIN ONLY.</div>`;
+        return `
+            <div class="p-12 text-center">
+                <i data-lucide="shield-alert" class="w-16 h-16 text-red-500 mx-auto mb-4"></i>
+                <h2 class="text-2xl font-bold text-white mb-2">Akses Ditolak</h2>
+                <p class="text-slate-400 mb-6">Akun Anda tidak memiliki hak akses administrator.</p>
+                <button onclick="updateState({currentMode:'PROFILE'})" class="px-6 py-2 bg-slate-800 text-white rounded-xl">Kembali ke Profil</button>
+            </div>
+        `;
     }
 
     // Trigger load data immediately
@@ -195,11 +221,16 @@ export const AdminPanel = (user: UserProfile) => {
              <div class="flex items-center justify-between mb-8">
                 <div>
                     <h2 class="text-3xl font-bold text-white">Admin Dashboard</h2>
-                    <p class="text-purple-300">Manage AltoGen Studio Users</p>
+                    <p class="text-purple-300">Kelola Pengguna AltoGen Studio</p>
                 </div>
-                <button onclick="updateState({currentMode:'PROFILE'})" class="px-4 py-2 bg-slate-800 rounded-lg text-slate-300 hover:text-white transition-colors">
-                    Back to Profile
-                </button>
+                <div class="flex gap-2">
+                    <button id="btn-admin-refresh" class="p-2 bg-slate-800 text-slate-300 hover:text-white rounded-lg transition-colors">
+                        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                    </button>
+                    <button onclick="updateState({currentMode:'PROFILE'})" class="px-4 py-2 bg-slate-800 rounded-lg text-slate-300 hover:text-white transition-colors">
+                        Kembali
+                    </button>
+                </div>
             </div>
             
             <div id="admin-content">
@@ -210,5 +241,6 @@ export const AdminPanel = (user: UserProfile) => {
 };
 
 export const adminListeners = () => {
-    // Listeners are attached inside renderContent to handle dynamic elements
+    const refreshBtn = document.getElementById('btn-admin-refresh');
+    if (refreshBtn) refreshBtn.onclick = () => loadData();
 };

@@ -29,33 +29,54 @@ export const loginWithGoogle = async (): Promise<UserProfile> => {
         const result = await signInWithPopup(auth, provider);
         const user = result.user;
         
-        // Check if user exists in Firestore, if not create basic profile
         const userRef = doc(db, "users", user.uid);
-        const userSnap = await getDoc(userRef);
+        let userSnap;
+        try {
+            userSnap = await getDoc(userRef);
+        } catch (e) {
+            console.warn("Could not fetch user doc, might be a new user or rules issue.");
+        }
         
         let userProfile: UserProfile;
 
-        if (userSnap.exists()) {
+        if (userSnap && userSnap.exists()) {
             userProfile = userSnap.data() as UserProfile;
-            // Ensure role is correct if it's the hardcoded admin
-            if (user.email === ADMIN_EMAIL && userProfile.role !== 'admin') {
-                userProfile.role = 'admin';
-                await setDoc(userRef, { role: 'admin' }, { merge: true });
+            
+            if (user.email === ADMIN_EMAIL) {
+                const updates: any = {};
+                if (userProfile.role !== 'admin') updates.role = 'admin';
+                if (userProfile.plan !== 'premium') updates.plan = 'premium';
+                
+                if (Object.keys(updates).length > 0) {
+                    userProfile = { ...userProfile, ...updates };
+                    try {
+                        await setDoc(userRef, updates, { merge: true });
+                    } catch (e) {
+                        console.error("Failed to update admin status in Firestore. Check rules.", e);
+                    }
+                }
             }
         } else {
-            // Create new user
+            const isAdmin = user.email === ADMIN_EMAIL;
             userProfile = {
                 uid: user.uid,
                 email: user.email || '',
                 displayName: user.displayName || 'User',
                 photoURL: user.photoURL || '',
-                role: user.email === ADMIN_EMAIL ? 'admin' : 'user',
-                plan: 'free'
+                role: isAdmin ? 'admin' : 'user',
+                plan: isAdmin ? 'premium' : 'free'
             };
-            await setDoc(userRef, userProfile);
+            try {
+                await setDoc(userRef, userProfile);
+            } catch (e) {
+                console.error("Failed to create user doc. Check Firestore rules.", e);
+            }
         }
         return userProfile;
-    } catch (error) {
+    } catch (error: any) {
+        if (error.code === 'auth/popup-closed-by-user') {
+            throw new Error("Login dibatalkan.");
+        }
         console.error("Login Failed", error);
         throw error;
     }
@@ -69,18 +90,30 @@ export const subscribeToAuth = (callback: (user: UserProfile | null) => void) =>
     return onAuthStateChanged(auth, async (user) => {
         if (user) {
             const userRef = doc(db, "users", user.uid);
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-                callback(userSnap.data() as UserProfile);
-            } else {
-                // Fallback if doc doesn't exist yet (rare race condition)
-                callback({
+            try {
+                const userSnap = await getDoc(userRef);
+                if (userSnap.exists()) {
+                    callback(userSnap.data() as UserProfile);
+                } else {
+                    const isAdmin = user.email === ADMIN_EMAIL;
+                    callback({
+                        uid: user.uid,
+                        email: user.email || '',
+                        displayName: user.displayName || '',
+                        photoURL: user.photoURL || '',
+                        role: isAdmin ? 'admin' : 'user',
+                        plan: isAdmin ? 'premium' : 'free'
+                    });
+                }
+            } catch (e) {
+                 const isAdmin = user.email === ADMIN_EMAIL;
+                 callback({
                     uid: user.uid,
                     email: user.email || '',
                     displayName: user.displayName || '',
                     photoURL: user.photoURL || '',
-                    role: user.email === ADMIN_EMAIL ? 'admin' : 'user',
-                    plan: 'free'
+                    role: isAdmin ? 'admin' : 'user',
+                    plan: isAdmin ? 'premium' : 'free'
                 });
             }
         } else {
@@ -108,13 +141,21 @@ export const submitUpgradeRequest = async (request: Omit<UpgradeRequest, 'id' | 
 
 export const getUpgradeRequests = async (): Promise<UpgradeRequest[]> => {
     try {
-        const q = query(collection(db, "upgrade_requests")); // Get all, can sort later
+        const q = query(collection(db, "upgrade_requests")); 
         const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UpgradeRequest))
-            .sort((a, b) => b.timestamp - a.timestamp); // Newest first
+        
+        return querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return { id: doc.id, ...data } as UpgradeRequest;
+        })
+        .sort((a, b) => {
+            const tA = a.timestamp?.seconds || (a.timestamp?.toMillis ? a.timestamp.toMillis() / 1000 : 0) || 0;
+            const tB = b.timestamp?.seconds || (b.timestamp?.toMillis ? b.timestamp.toMillis() / 1000 : 0) || 0;
+            return tB - tA;
+        }); 
     } catch (e) {
-        console.error("Get Requests Error:", e);
-        throw e;
+        console.warn("Get Requests Error (likely permission):", e);
+        return []; // Kembalikan array kosong jika tidak punya izin
     }
 };
 
@@ -135,21 +176,23 @@ export const processUpgradeRequest = async (requestId: string, userId: string, a
 };
 
 export const getTotalUsersCount = async (): Promise<number> => {
-    const snap = await getDocs(collection(db, "users"));
-    return snap.size;
+    try {
+        const snap = await getDocs(collection(db, "users"));
+        return snap.size;
+    } catch (e) {
+        console.warn("Get Total Users Error (likely permission):", e);
+        return 0; 
+    }
 };
 
-// --- PROJECT STORAGE (Existing) ---
+// --- PROJECT STORAGE ---
 
-// Helper to generate a random 6-character ID
 const generateId = () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
 };
 
 export const saveProjectToCloud = async (config: ProjectConfig, files: FileEntry[]): Promise<string> => {
     const projectId = generateId();
-    
-    // We only save text files to Firestore to keep document size reasonable
     const textFiles = files.filter(f => !f.nativeFile && !f.isVirtual && f.type.startsWith('text/'));
     
     const payload = {

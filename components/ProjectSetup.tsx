@@ -62,9 +62,9 @@ export const ProjectSetup = (config: ProjectConfig) => {
 
   const getSourceDescription = () => {
       switch(config.sourceType) {
-          case 'url': return 'Wrap an existing responsive website into a native app container.';
-          case 'folder': return 'Bundle local HTML/CSS/JS files directly into the application.';
-          case 'github': return 'Clone and build from a remote Git repository.';
+          case 'url': return 'Enter a website URL to wrap it into a native Android/iOS application.';
+          case 'folder': return 'Upload a local folder containing your HTML, CSS, and JS files.';
+          case 'github': return 'Provide a GitHub repository URL to clone and build your app from source.';
       }
   };
 
@@ -74,16 +74,16 @@ export const ProjectSetup = (config: ProjectConfig) => {
         <h2 class="text-4xl font-bold text-white bg-clip-text text-transparent bg-gradient-to-r from-white via-cyan-100 to-slate-400">
             Create New Project
         </h2>
-        <p class="text-slate-400 text-lg max-w-2xl mx-auto">Define the source architecture and metadata for your hybrid application.</p>
+        <p class="text-slate-400 text-lg max-w-2xl mx-auto">Select your input source to generate a Cordova hybrid application.</p>
       </div>
 
       <!-- Compact Source Selection -->
       <div class="bg-slate-900/40 backdrop-blur-sm rounded-2xl p-6 border border-white/5 shadow-inner">
-          <label class="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-4 block">Source Origin</label>
+          <label class="text-xs uppercase tracking-wider text-slate-500 font-semibold mb-4 block">Input Source</label>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            ${renderSourceBtn('url', 'Web URL', 'globe', 'cyan')}
-            ${renderSourceBtn('folder', 'Local Assets', 'folder-open', 'indigo')}
-            ${renderSourceBtn('github', 'GitHub Repo', 'github', 'violet')}
+            ${renderSourceBtn('url', 'Website URL', 'globe', 'cyan')}
+            ${renderSourceBtn('folder', 'Project Folder', 'folder-open', 'indigo')}
+            ${renderSourceBtn('github', 'GitHub URL', 'github', 'violet')}
           </div>
           <p class="mt-4 text-xs text-slate-500 italic text-center border-t border-white/5 pt-3">
             ${getSourceDescription()}
