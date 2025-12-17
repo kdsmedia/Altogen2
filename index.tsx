@@ -1,5 +1,6 @@
 
 import { createIcons, icons } from 'lucide';
+import { inject } from '@vercel/analytics';
 import { Sidebar } from './components/Sidebar';
 import { ProjectSetup, setupListeners } from './components/ProjectSetup';
 import { ConfigResult, configListeners } from './components/ConfigResult';
@@ -12,7 +13,7 @@ import { Upgrade, upgradeListeners } from './components/Upgrade';
 import { AdminPanel, adminListeners } from './components/AdminPanel';
 import { SearchPalette, searchListeners } from './components/SearchPalette';
 import { ViewMode, ProjectConfig, FileEntry, AssetEntry, ProjectIssue, EditorIssue, UserProfile } from './types';
-import { validateProject } from './services/validationService';
+import { validateProject, applyAutoFix } from './services/validationService';
 import { saveProject, loadProject, resetProject } from './services/storageService';
 import { saveProjectToCloud, loadProjectFromCloud, subscribeToAuth } from './services/firebaseService';
 import { highlightCode, analyzeCode } from './services/syntaxService';
@@ -327,6 +328,9 @@ export const fileActions = {
 };
 
 const init = () => {
+    // Initialize Vercel Analytics
+    inject();
+    
     const { config, files } = loadProject();
     if (config) {
         state.config = config;
